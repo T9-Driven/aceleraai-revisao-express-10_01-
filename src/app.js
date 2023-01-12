@@ -1,41 +1,39 @@
 import express from 'express'
+import dotenv from 'dotenv'
+import cors from 'cors'
+import { MongoClient } from 'mongodb'
+
+dotenv.config()
+
+const mongoClient = new MongoClient(process.env.DATABASE_URL)
+let db;
+try {
+  await mongoClient.connect()
+  db = mongoClient.db()
+} catch (error) {
+  console.log(error)
+}
 
 const app = express()
+app.use(cors())
 app.use(express.json())
 
-const cars = [
-  { id: 1, model: "Fiat", name: "Argo", year: 2020 },
-  { id: 2, model: "Fiat", name: "Uno", year: 2022 },
-  { id: 3, model: "VW", name: "Polo", year: 2019 },
-  { id: 4, model: "VW", name: "Gol", year: 2018 },
-  { id: 5, model: "Ford", name: "EcoSport", year: 2021 },
-  { id: 6, model: "Volvo", name: "Xc60", year: 2021 }
-]
+app.get('/api/cars', async (req, res) => {
 
-app.get('/api/cars', (req, res) => {
-  const { year } = req.query
+  try {
+    const cars = await db.collection("cars").find().toArray()
 
-  if (year) {
-    const filteredCars = cars.filter(item => item.year === parseInt(year))
-    return res.send(filteredCars)
+    if (!cars) return res.status(404).send("Não encontrei carros!!!")
+
+    res.send(cars)
+
+  } catch (error) {
+    res.status(500).send("Deu um erro no servidor de banco de dados")
   }
 
-  res.send(cars)
 })
 
-app.get('/api/cars/:id', (req, res) => {
-  const { id } = req.params
-
-  if (!id || isNaN(id)) return res.status(422).send('Por favor informe um id válido')
-
-  const getCarById = cars.find(item => item.id === parseInt(id))
-
-  if (!getCarById) return res.status(404).send("Carro não encontrado!")
-
-  res.send(getCarById)
-})
-
-app.post('/api/cars', (req, res) => {
+app.post('/api/cars', async (req, res) => {
   const { model, year, name } = req.body;
   const { admin } = req.headers;
 
@@ -43,11 +41,19 @@ app.post('/api/cars', (req, res) => {
 
   if (!model || !year || !name) return res.status(422).send('Por favor informe todos os  campos!')
 
-  cars.push({ model, year, name })
 
-  res.status(201).send("OK")
+  try {
+    const existsCar = await db.collection("cars").findOne({ name })
+
+    if (existsCar) return res.status(409).send("Esse carro já está cadastrado")
+
+    await db.collection("cars").insertOne({ model, year, name })
+    return res.status(201).send("OK")
+  } catch (error) {
+    return res.status(500).send("Deu um erro no servidor de banco de dados")
+  }
 })
 
-const PORT = 6000
+const PORT = 5007
 
 app.listen(PORT, () => console.log('foiiiiiii'))
